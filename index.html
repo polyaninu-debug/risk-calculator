@@ -60,9 +60,9 @@ textarea{min-height:90px;resize:vertical}
 
 <details><summary>Настройки и данные</summary>
 <p id="vis"></p>
-<label>Резервная копия: «Экспорт» создаёт короткий код и копирует его. На другом устройстве вставьте код целиком в это поле и нажмите «Импорт»</label>
+<label>Резервная копия. Лучше всего переносить файлом: «Скачать файл» на одном устройстве, «Загрузить файл» на другом. Код тоже работает: «Экспорт» копирует его, «Импорт» читает из поля.</label>
 <textarea id="bk"></textarea>
-<div class="bar"><button id="ex">Экспорт</button><button id="im">Импорт</button><button id="rs">Сбросить всё</button><span class="mu" id="bst"></span></div>
+<div class="bar"><label class="chk"><input type="checkbox" id="wd" checked> со справочником</label><button id="exf">Скачать файл</button><button id="imb">Загрузить файл</button><input type="file" id="imf" hidden><button id="ex">Экспорт</button><button id="im">Импорт</button><button id="rs">Сбросить всё</button><span class="mu" id="bst"></span></div>
 <p class="mu">Всё хранится локально в браузере и никуда не отправляется. Формула объёма: V = floor(p / (w × T) × (1 − c/100)); число стопов: S = floor(n / (p × (1 + c/100))).</p>
 </details></div>
 <script>
@@ -198,12 +198,20 @@ async function unpack(s){s=s.trim();if(s[0]==="{")return s;const m=s.replace(/\s
   if(tag==="RM1:"){if(!window.DecompressionStream)throw ru("этот браузер не умеет распаковывать код, обновите его");
     return new TextDecoder().decode(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())}
   throw ru("это не код резервной копии")}
-$("#ex").onclick=async()=>{try{const x=await pack(JSON.stringify(S));$("#bk").value=x;let ok=false;
+const getData=()=>$("#wd").checked?S:Object.assign({},S,{dir:[]});
+$("#ex").onclick=async()=>{try{const x=await pack(JSON.stringify(getData()));$("#bk").value=x;let ok=false;
   try{await navigator.clipboard.writeText(x);ok=true}catch(e){try{$("#bk").select();ok=document.execCommand("copy")}catch(e2){}}
   $("#bst").textContent="Код: "+x.length+" символов"+(ok?", скопирован в буфер":". Выделите поле и скопируйте вручную")}catch(e){$("#bst").textContent="Не удалось создать код"}};
-$("#im").onclick=async()=>{const v=$("#bk").value;if(!v.trim()){$("#bst").textContent="Вставьте код в поле";return}
-  try{const o=JSON.parse(await unpack(v));if(!o||!o.cols)throw ru("в коде нет данных калькулятора");S=o;save();location.reload()}
-  catch(e){$("#bst").textContent="Не удалось прочитать: "+(e.ru||"код повреждён или скопирован не полностью (получено "+v.trim().length+" символов)")}};
+$("#exf").onclick=async()=>{try{const x=await pack(JSON.stringify(getData())),a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([x],{type:"text/plain"}));a.download="risk-calculator-backup.txt";document.body.append(a);a.click();a.remove();
+  $("#bst").textContent="Файл risk-calculator-backup.txt сохранён (обычно в «Загрузки»), "+x.length+" символов"}catch(e){$("#bst").textContent="Не удалось сохранить файл"}};
+async function doImport(v){if(!v.trim()){$("#bst").textContent="Вставьте код в поле или выберите файл";return}
+  try{const o=JSON.parse(await unpack(v));if(!o||!o.cols)throw ru("в коде нет данных калькулятора");
+    if(!o.dir||!o.dir.length)o.dir=S.dir;S=o;save();location.reload()}
+  catch(e){$("#bst").textContent="Не удалось прочитать: "+(e.ru||"код повреждён или скопирован не полностью (получено "+v.trim().length+" символов)")}}
+$("#im").onclick=()=>doImport($("#bk").value);
+$("#imb").onclick=()=>$("#imf").click();
+$("#imf").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>doImport(String(r.result));r.onerror=()=>{$("#bst").textContent="Не удалось открыть файл"};r.readAsText(f);e.target.value=""};
 let rsT=0;$("#rs").onclick=()=>{const b=$("#rs");
   if(!rsT){b.textContent="Нажмите ещё раз: удалить всё";rsT=setTimeout(()=>{rsT=0;b.textContent="Сбросить всё"},4000);return}
   try{localStorage.removeItem(KEY)}catch(e){}location.reload()};
