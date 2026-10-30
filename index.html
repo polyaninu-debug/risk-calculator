@@ -60,7 +60,7 @@ textarea{min-height:90px;resize:vertical}
 
 <details><summary>Настройки и данные</summary>
 <p id="vis"></p>
-<label>Резервная копия: «Экспорт» заполняет поле, «Импорт» загружает его обратно</label>
+<label>Резервная копия: «Экспорт» создаёт короткий код и копирует его. На другом устройстве вставьте код целиком в это поле и нажмите «Импорт»</label>
 <textarea id="bk"></textarea>
 <div class="bar"><button id="ex">Экспорт</button><button id="im">Импорт</button><button id="rs">Сбросить всё</button><span class="mu" id="bst"></span></div>
 <p class="mu">Всё хранится локально в браузере и никуда не отправляется. Формула объёма: V = floor(p / (w × T) × (1 − c/100)); число стопов: S = floor(n / (p × (1 + c/100))).</p>
@@ -188,8 +188,22 @@ let icT=0;$("#ic").onclick=()=>{const b=$("#ic"),sec=$("#tg").value,nm=S.cols[se
   if(!icT){b.textContent="Нажмите ещё раз: очистить «"+nm+"»";icT=setTimeout(()=>{icT=0;b.textContent="Очистить раздел"},4000);return}
   clearTimeout(icT);icT=0;b.textContent="Очистить раздел";S.dir=S.dir.filter(d=>d.m&&d.m!==sec);save();tgFill();find();$("#ist").textContent="Раздел «"+nm+"» очищен"};
 $("#nt").value=S.notes;$("#nt").oninput=e=>{S.notes=e.target.value;save()};
-$("#ex").onclick=()=>{$("#bk").value=JSON.stringify(S)};
-$("#im").onclick=()=>{try{const o=JSON.parse($("#bk").value);if(!o.cols)throw 0;S=o;save();location.reload()}catch(e){$("#bst").textContent="Не удалось прочитать данные"}};
+const b64e=u=>{let s="";for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));return btoa(s)};
+const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const ru=m=>Object.assign(new Error(m),{ru:m});
+async function pack(txt){const u=new TextEncoder().encode(txt);if(!window.CompressionStream)return"RM0:"+b64e(u);
+  const cs=new Blob([u]).stream().pipeThrough(new CompressionStream("gzip"));return"RM1:"+b64e(new Uint8Array(await new Response(cs).arrayBuffer()))}
+async function unpack(s){s=s.trim();if(s[0]==="{")return s;const m=s.replace(/\s+/g,""),tag=m.slice(0,4),u=b64d(m.slice(4));
+  if(tag==="RM0:")return new TextDecoder().decode(u);
+  if(tag==="RM1:"){if(!window.DecompressionStream)throw ru("этот браузер не умеет распаковывать код, обновите его");
+    return new TextDecoder().decode(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer())}
+  throw ru("это не код резервной копии")}
+$("#ex").onclick=async()=>{try{const x=await pack(JSON.stringify(S));$("#bk").value=x;let ok=false;
+  try{await navigator.clipboard.writeText(x);ok=true}catch(e){try{$("#bk").select();ok=document.execCommand("copy")}catch(e2){}}
+  $("#bst").textContent="Код: "+x.length+" символов"+(ok?", скопирован в буфер":". Выделите поле и скопируйте вручную")}catch(e){$("#bst").textContent="Не удалось создать код"}};
+$("#im").onclick=async()=>{const v=$("#bk").value;if(!v.trim()){$("#bst").textContent="Вставьте код в поле";return}
+  try{const o=JSON.parse(await unpack(v));if(!o||!o.cols)throw ru("в коде нет данных калькулятора");S=o;save();location.reload()}
+  catch(e){$("#bst").textContent="Не удалось прочитать: "+(e.ru||"код повреждён или скопирован не полностью (получено "+v.trim().length+" символов)")}};
 let rsT=0;$("#rs").onclick=()=>{const b=$("#rs");
   if(!rsT){b.textContent="Нажмите ещё раз: удалить всё";rsT=setTimeout(()=>{rsT=0;b.textContent="Сбросить всё"},4000);return}
   try{localStorage.removeItem(KEY)}catch(e){}location.reload()};
