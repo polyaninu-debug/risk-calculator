@@ -63,7 +63,7 @@ textarea{min-height:90px;resize:vertical}
 <label>Резервная копия. Лучше всего переносить файлом: «Скачать файл» на одном устройстве, «Загрузить файл» на другом. Код тоже работает: «Экспорт» копирует его, «Импорт» читает из поля.</label>
 <textarea id="bk"></textarea>
 <div class="bar"><label class="chk"><input type="checkbox" id="wd" checked> со справочником</label><button id="exf">Скачать файл</button><button id="imb">Загрузить файл</button><input type="file" id="imf" hidden><button id="ex">Экспорт</button><button id="im">Импорт</button><button id="rs">Сбросить всё</button><span class="mu" id="bst"></span></div>
-<p class="mu">Всё хранится локально в браузере и никуда не отправляется. Формула объёма: V = floor(p / (w × T) × (1 − c/100)); число стопов: S = floor(n / (p × (1 + c/100))).</p>
+<p class="mu">Всё хранится локально в браузере и никуда не отправляется. Формула объёма: V = floor(p / (w × (T + k))), где k — комиссия входа и выхода плюс проскальзывание, в тиках; число стопов: S = floor(n / p).</p>
 </details></div>
 <script>
 const $=(s,e=document)=>(e||document).querySelector(s);
@@ -74,23 +74,24 @@ const def=()=>({theme:"",order:["st","fut","fx"],dir:[],notes:"",cols:{fut:mk("�
 let S;try{S=JSON.parse(localStorage.getItem(KEY))||def()}catch(e){S=def()}
 if(!Array.isArray(S.order)||S.order.length!==3)S.order=["st","fut","fx"];
 if(!S.memo)S.memo={};if(!Array.isArray(S.fav))S.fav=[];
-Object.entries(S.cols).forEach(([id,s])=>{if(!Array.isArray(s.mine))s.mine=s.stops.slice();if(typeof s.sel!=="string")s.sel="";s.auto=false;const m=(s.sel&&S.memo[id+":"+s.sel])||s.mine;s.stops=m.length?m.slice():[""]});
+Object.entries(S.cols).forEach(([id,s])=>{s.id=id;delete s.c;if(!s.cm)s.cm="pct";if(!s.cx)s.cx="mkt";if(s.sl===undefined)s.sl="";if(!Array.isArray(s.mine))s.mine=s.stops.slice();if(typeof s.sel!=="string")s.sel="";s.auto=false;const m=(s.sel&&S.memo[id+":"+s.sel])||s.mine;s.stops=m.length?m.slice():[""]});
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const els={};
 function theme(){const r=document.documentElement;S.theme?r.setAttribute("data-theme",S.theme):r.removeAttribute("data-theme")}
 $("#th").onclick=()=>{S.theme=S.theme===""?"dark":S.theme==="dark"?"light":"";theme();save()};
-const F=[["n","Просадка, ₽"],["p","Риск на сделку, ₽"],["w","Шаг цены, ₽"],["c","Комиссия и проскальзывание, %"]];
+const F=[["n","Просадка, ₽"],["p","Риск на сделку, ₽"],["w","Шаг цены, ₽"]];
 function build(id){
   const s=S.cols[id],el=document.createElement("section");el.className="card";
   el.innerHTML=`<h2>${s.name}</h2><div class="fv"></div><div class="ins mu"></div>`+F.map(([k,t])=>`<label>${t}</label><input inputmode="decimal" data-k="${k}" value="${s[k]}">`).join("")
+  +`<label>Комиссия при входе (из справочника, в тиках)</label><select data-k="cm"><option value="pct"${s.cm==="pct"?" selected":""}>Не использовать</option><option value="mkt"${s.cm==="mkt"?" selected":""}>Вход по рынку</option><option value="lim"${s.cm==="lim"?" selected":""}>Вход лимитом</option></select><label>Комиссия при выходе по стопу</label><select data-k="cx"><option value="mkt"${s.cx==="mkt"?" selected":""}>По рынку</option><option value="lim"${s.cx==="lim"?" selected":""}>Лимитом</option><option value="no"${s.cx==="no"?" selected":""}>Не учитывать</option></select><label>Проскальзывание, пунктов (всего, вход и выход)</label><input inputmode="decimal" data-k="sl" placeholder="0" value="${s.sl}">`
   +`<label>Или из депозита: депозит, ₽ · риск, % (подставит риск на сделку)</label><div class="two"><input inputmode="decimal" data-k="D" placeholder="Депозит" value="${s.D}"><input inputmode="decimal" data-k="r" placeholder="Риск %" value="${s.r}"></div>`
-  +`<div class="chips pr"></div><div class="warn"></div><label>Стоп в тиках</label><div class="stops"></div><div class="bar"><button class="add">+ стоп</button><button class="au">Подобрать стопы</button><button class="rv" hidden>↩ Мои стопы</button><button class="cp">Копировать</button></div>`
+  +`<div class="chips pr"></div><div class="warn"></div><label>Стоп в тиках</label><div class="stops"></div><div class="bar"><button class="add">+ стоп</button><button class="au">Подобрать стопы</button><button class="rv" hidden>↩ Мои стопы</button></div>`
   +`<div class="big"><span>Кол. стопов</span><b class="S">—</b></div>`;
   el.addEventListener("input",e=>{const k=e.target.dataset.k;if(!k)return;s[k]=e.target.value;
     if((k==="D"||k==="r")&&num(s.D)>0&&num(s.r)>0){s.p=String(+(num(s.D)*num(s.r)/100).toFixed(2));$('[data-k="p"]',el).value=s.p}
     calc(id)});
   $(".add",el).onclick=()=>{s.stops.push("");rows(id);keep(id)};
-  $(".au",el).onclick=()=>autoStops(id);$(".rv",el).onclick=()=>revert(id);$(".cp",el).onclick=()=>{const t=lines(id);if(t)navigator.clipboard&&navigator.clipboard.writeText(t).catch(()=>{})};
+  $(".au",el).onclick=()=>autoStops(id);$(".rv",el).onclick=()=>revert(id);
   els[id]=el;rows(id);chips(id);calc(id);ui(id);return el}
 function chips(id){const s=S.cols[id],b=$(".pr",els[id]);b.innerHTML="";
   s.presets.forEach((v,i)=>{const g=document.createElement("span");g.className="cg";
@@ -107,8 +108,10 @@ function rows(id){const s=S.cols[id],b=$(".stops",els[id]);b.innerHTML="";
     r.innerHTML=`<input inputmode="decimal" placeholder="Введите число" value="${v}"><span class="out">—</span><button title="Убрать">✕</button>`;
     $("input",r).oninput=e=>{s.stops[i]=e.target.value;keep(id);calc(id)};
     $("button",r).onclick=()=>{if(s.stops.length>1)s.stops.splice(i,1);else s.stops[0]="";keep(id);rows(id);calc(id)};b.append(r)});calc(id)}
-function vol(s,T){const p=num(s.p),w=num(s.w),c=num(s.c);return p>0&&w>0&&T>0?Math.floor(p/(w*T)*(1-c/100)+1e-9):null}
-function maxT(s,w){w=w||num(s.w);const p=num(s.p),c=num(s.c);return p>0&&w>0?Math.floor(p*(1-c/100)/w+1e-9):0}
+const pair=x=>{const m=/^\s*([\d.,]+)(?:\s*\(\s*([\d.,]+)\s*\))?/.exec(String(x||""));return m?[num(m[1]),m[2]!==undefined?num(m[2]):num(m[1])]:[0,0]};
+function kOf(s,d){const sl=num(s.sl);if(!s.cm||s.cm==="pct")return sl;d=d||(s.sel&&ent(s.id,s.sel));if(!d)return sl;const a=pair(d.cp);return sl+a[s.cm==="lim"?1:0]+(s.cx==="no"?0:a[s.cx==="lim"?1:0])}
+function vol(s,T){const p=num(s.p),w=num(s.w),k=kOf(s);return p>0&&w>0&&T>0?Math.floor(p/(w*(T+k))+1e-9):null}
+function maxT(s,w,d){w=w||num(s.w);const p=num(s.p),k=kOf(s,d);return p>0&&w>0?Math.max(0,Math.floor(p/w-k+1e-9)):0}
 function autoStops(id){const s=S.cols[id],tm=maxT(s);
   if(!(tm>=1)){s.stops=[""]}else{const st=tm>=25?5:Math.max(1,Math.floor(tm/5)),a=[];for(let i=1;i<=5&&i*st<=tm;i++)a.push(String(i*st));s.stops=a}
   s.auto=true;rows(id);ui(id);save()}
@@ -132,17 +135,17 @@ function ui(id){const s=S.cols[id],el=els[id],t=s.sel,I=$(".ins",el),F=$(".fv",e
   F.innerHTML="";S.fav.filter(k=>k.startsWith(id+":")).forEach(k=>{const tk=k.slice(id.length+1),d=ent(id,tk);if(!d)return;
     const c=document.createElement("button");c.className="chip"+(tk===t?" on":"");c.textContent="★ "+tk;c.onclick=()=>pick(id,d);F.append(c)})}
 function refind(){if($("#q").value.trim())find()}
-function calc(id){const s=S.cols[id],el=els[id],n=num(s.n),p=num(s.p),c=num(s.c),w=num(s.w);
-  $(".S",el).textContent=n>0&&p>0?Math.floor(n/(p*(1+c/100))+1e-9):"—";
+function calc(id){const s=S.cols[id],el=els[id],n=num(s.n),p=num(s.p),w=num(s.w),k=kOf(s);
+  $(".S",el).textContent=n>0&&p>0?Math.floor(n/p+1e-9):"—";
   const W=$(".warn",el),tm=maxT(s);W.className="warn";
   if(!(p>0&&w>0))W.textContent="";
-  else if(tm<1){W.classList.add("bad");W.textContent="⛔ Не подходит: 1 лот при стопе в 1 тик = "+fmt(w)+" ₽, а допустимый риск на сделку — "+fmt(p*(1-c/100))+" ₽"}
+  else if(tm<1){W.classList.add("bad");W.textContent="⛔ Не подходит: 1 лот при стопе в 1 тик = "+fmt(w*(1+k))+" ₽, а допустимый риск на сделку — "+fmt(p)+" ₽"}
   else if(tm<5){W.classList.add("wn");W.textContent="⚠ Мало места для стопа: максимум "+tm+" тик. при объёме 1 лот"}
   else{W.classList.add("ok");W.textContent="✓ Подходит: стоп до "+tm+" тик. при 1 лоте; при стопе в 1 тик — до "+vol(s,1)+" лот."}
+  if(p>0&&w>0){if(s.cm!=="pct"&&k<=num(s.sl))W.textContent+=" · комиссия не учтена: выберите инструмент с данными по комиссии";else if(k>0)W.textContent+=" · к стопу добавлено "+k+" п (комиссия и проскальзывание)"}
   el.querySelectorAll(".row").forEach((r,i)=>{const T=num(s.stops[i]),V=vol(s,T),o=$(".out",r);
     o.classList.toggle("bad",V===0);
-    o.textContent=V===null?"—":V<1?"не подходит: 1 лот = "+fmt(w*T)+" ₽":V+" лот. · риск "+fmt(V*w*T)+" ₽"});save();refind()}
-function lines(id){const s=S.cols[id];return s.stops.map(t=>{const V=vol(s,num(t));return V===null?"":`${t} тик. → ${V} лот.`}).filter(Boolean).join("\n")}
+    o.textContent=V===null?"—":V<1?"не подходит: 1 лот = "+fmt(w*(T+k))+" ₽":V+" лот. · риск "+fmt(V*w*(T+k))+" ₽"});save();refind()}
 const grid=$("#grid");S.order.forEach(id=>grid.append(build(id)));
 function arrange(){S.order.forEach(id=>grid.append(els[id]))}
 function vis(){const v=$("#vis");v.innerHTML="";S.order.forEach((id,i)=>{const d=document.createElement("div");d.className="orow";
@@ -160,14 +163,20 @@ function find(){const q=$("#q").value.trim(),r=$("#res");r.innerHTML="";if(!q)$(
   const sec=$("#tg").value,a=q.toLowerCase(),b=conv(q);const m=S.dir.filter(d=>{if(d.m&&d.m!==sec)return false;if(!q)return isFav(sec,d.t);const t=d.t.toLowerCase();return t.startsWith(a)||t.startsWith(b)||(d.name||"").toLowerCase().includes(a)}).sort((x,y)=>isFav(sec,y.t)-isFav(sec,x.t));const tot=m.length;m.splice(100);
   if(!m.length)r.innerHTML='<span class="mu">'+(q?"Ничего не найдено":"Избранное пусто: найдите тикер и нажмите ☆")+'</span>';
   m.forEach(d=>{const v=d.v||d.w,x=document.createElement("button"),i=[];
-    {const tg=S.cols[$("#tg").value];if(v&&tg&&num(tg.p)>0){const tm=maxT(tg,v);i.push(tm<1?"⛔ не подходит":"✓ стоп до "+tm+" тик.")}}if(d.ex)i.push("эксп. "+d.ex);if(d.s)i.push("шаг "+d.s);if(v)i.push(v+" ₽/шаг");if(d.l)i.push("лот "+d.l);if(d.pr)i.push("цена лота "+fmt(d.pr)+" ₽");if(d.ge)i.push("ГО биржи "+fmt(d.ge)+" ₽");if(d.cr)i.push("ком. "+d.cr+" ₽"+(d.cp?" ("+d.cp+" п)":""));if(d.go)i.push("ГО компании "+d.go);
+    {const tg=S.cols[$("#tg").value];if(v&&tg&&num(tg.p)>0){const tm=maxT(tg,v,d);i.push(tm<1?"⛔ не подходит":"✓ стоп до "+tm+" тик.")}}if(d.ex)i.push("эксп. "+d.ex);if(d.px)i.push("цена "+d.px);if(d.s)i.push("шаг "+d.s);if(v)i.push(v+" ₽/шаг");if(d.l)i.push("лот "+d.l);if(d.pr)i.push("цена лота "+fmt(d.pr)+" ₽");if(d.ge)i.push("ГО биржи "+fmt(d.ge)+" ₽");if(d.cr){const a=pair(d.cr),b=pair(d.cp);i.push("ком.: рынок "+a[0]+" ₽ ("+b[0]+" п), лимит "+a[1]+" ₽ ("+b[1]+" п)")}if(d.go)i.push("ГО компании "+d.go);
     x.innerHTML="<b></b> <span></span><br><small></small>";$("b",x).textContent=d.t;$("span",x).textContent=d.name||"";$("small",x).textContent=i.join(" · ");$("small",x).className="mu";
     x.onclick=()=>pick(sec,d);const w=document.createElement("div");w.className="rw";const f=document.createElement("button");f.className="st";f.textContent=isFav(sec,d.t)?"★":"☆";f.title="Избранное";f.onclick=()=>fav(sec,d.t);w.append(x,f);r.append(w)});if(tot>m.length){const e=document.createElement("span");e.className="mu";e.textContent="Показано "+m.length+" из "+tot+" — уточните запрос";r.append(e)}}
 $("#q").oninput=find;$("#tg").onchange=find;
 const DT=/^\d{4}-\d{2}-\d{2}$|^\d{1,2}[./]\d{1,2}[./]\d{2,4}$/,TK=/^[A-Za-z0-9._\-]+$/,isN=x=>x!==undefined&&/^[+\-]?\d+([.,]\d+)?$/.test(x);
 const SAMPLE=["+МосЭнерго\tMSNG\t0.0005\t0.5\t1000\t1.3475\t1347.5\tНет\t-\tДа\t1.5\t0.6 (0.08)\t2 (1)","2xAMIX\tXLAMIX\t1\t1\t1\t1134\t1134\tНет\t-\tДа\t1\t0.51 (0.06)\t1 (1)","2х Акции\tRU000A109R27\t0.5\t0.5\t1\t714\t714\tДа\t23:30\tДа\t1\t0.32 (0.04)\t1 (1)","2хОФЗ\tRU000A108ZB2\t50\t50\t1\t136200\t136200\tДа\t23:30\tДа\t1"].join("\n");
 S.dir=S.dir.filter(d=>!DT.test(d.t));tgFill();
-function parseLine(l){l=l.replace(/[ \u00a0]+\(/g,"(").trim();if(!l)return null;
+const mt=x=>{x=String(x||"");const m=/мейк\.?\s*([\d\s.,]+?)\s*\/\s*тейк\.?\s*([\d\s.,]+)/i.exec(x);if(m)return num(m[2])+" ("+num(m[1])+")";const n=num(x);return n>0?String(n):""};
+function parseCur(l){if(!/\t/.test(l))return null;const c=l.split("\t").map(x=>x.trim());
+  if(c.length<15||!TK.test(c[0])||isN(c[1])||!/%\s*$/.test(c[3]))return null;
+  const o={t:c[0].toUpperCase(),name:c[1],px:num(c[2]),s:num(c[7]),v:num(c[8]),l:num(c[9])},cr=mt(c[14]),cp=mt(c[15]),cc=mt(c[16]);
+  if(cr)o.cr=cr;if(cp)o.cp=cp;if(cc)o.cc=cc;return o}
+const CURSAMPLE=["BYNRUB_TOM\tБелорусский рубль\t27,3\t-0.36%\t—\t30,4675 (+11.21%)\t24,18 (-11.74%)\t0,0025\t2,5\t1\t0\tнет\t0,00\t—\t—\t—\t—","KZTRUB_TOM\tТенге\t18,2\t-1.09%\t—\t20,5225 (+11.54%)\t16,245 (-11.71%)\t0,0025\t0,25\t100\t5\tнет\t1,25\tмейк. 57,63 / тейк. 57,63\tмейк. 11,53 / тейк. 11,53\tмейк. 47 / тейк. 47\tмейк. 93 / тейк. 93","PLDRUB_TOM\tПалладий\t2 559,5\t-2.63%\t—\t—\t—\t0,1\t0,1\t1\t5\tда\t0,50\t2,38\t0,48\t5\t10","PLTRUB_TOM\tПлатина\t3 707,1\t-3.96%\t—\t—\t—\t0,1\t0,1\t1\t5\tда\t0,50\t3,45\t0,69\t7\t14","TRYRUB_TOM\tТурецкая лира\t1,694\t0%\t—\t2,982 (+76.03%)\t0,417 (-75.38%)\t0,001\t1\t1\t5\tнет\t5,00\tмейк. 57,62 / тейк. 57,62\tмейк. 11,52 / тейк. 11,52\tмейк. 12 / тейк. 12\tмейк. 24 / тейк. 24"].join("\n");
+function parseLine(l){l=l.replace(/[ \u00a0]+\(/g,"(").trim();if(!l)return null;const cu=parseCur(l);if(cu)return cu;
   let c=/[;\t]/.test(l)?l.split(/[;\t]/).map(x=>x.trim()):l.split(/\s+/);let i=-1;const ex=c.find(x=>DT.test(x));c=c.filter(x=>!DT.test(x));
   for(let j=0;j<c.length-2;j++)if(TK.test(c[j])&&isN(c[j+1])&&isN(c[j+2])){i=j;break}
   if(i<0)for(let j=0;j<c.length-1;j++)if(TK.test(c[j])&&isN(c[j+1])){i=j;break}
@@ -176,8 +185,8 @@ function parseLine(l){l=l.replace(/[ \u00a0]+\(/g,"(").trim();if(!l)return null;
   if(f.length>=5){if(ex)Object.assign(o,{s:num(f[0]),v:num(f[1]),l:num(f[2]),mp:num(f[3]),ge:num(f[4]),ac:f[5],ct:f[6],go:f[7],cr:f[8],cp:f[9]});else Object.assign(o,{s:num(f[0]),v:num(f[1]),l:num(f[2]),pr:num(f[4]),ac:f[5],ct:f[6],sh:f[7],go:f[8],cr:f[9],cp:f[10]})}
   else Object.assign(o,{v:num(f[0]),l:num(f[1])});
   return o}
-$("#ie").onclick=()=>{$("#imp").value=SAMPLE};
-$("#ib").onclick=()=>{const sec=$("#tg").value,L=$("#imp").value.split("\n").filter(l=>l.trim()),seen=new Set(),dup=[],bad=[];let add=0,upd=0;
+$("#ie").onclick=()=>{$("#imp").value=$("#tg").value==="fx"?CURSAMPLE:SAMPLE};
+$("#ib").onclick=()=>{const sec=$("#tg").value,L=$("#imp").value.split("\n").filter(l=>l.trim()&&!/^(Тикер|Акция)(\s|$)/i.test(l.trim())),seen=new Set(),dup=[],bad=[];let add=0,upd=0;
   L.forEach(l=>{const o=parseLine(l);if(!o){bad.push(l.trim());return}o.m=sec;
     const rp=seen.has(o.t);seen.add(o.t);if(rp)dup.push(o.t);
     const i=S.dir.findIndex(d=>d.t===o.t&&(!d.m||d.m===sec));
